@@ -1,60 +1,70 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import random
+const express = require('express');
+const cors = require('cors');
+const app = express();
 
-app = FastAPI()
+app.use(cors());
+app.use(express.json());
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+// Almacenamiento en memoria para los PINs activos
+let activePins = {};
 
-pins = {}        # {pin: user_id}
-user_states = {} # {user_id: is_scared}
+app.get('/', (req, res) => {
+    res.send('Servidor de PanicCam activo y funcionando en Render 🚀');
+});
 
-class StatusData(BaseModel):
-    pin: str
-    is_scared: bool
+// 1. ROBLOX registra un PIN recién generado
+app.post('/api/create-pin', (req, res) => {
+    const { pin } = req.body;
+    if (!pin) {
+        return res.status(400).json({ success: false, message: "PIN no proporcionado" });
+    }
 
-@app.get("/")
-def home():
-    return {"status": "OK"}
+    activePins[pin] = { linked: false, state: "Tranquilo" };
+    console.log(`[PIN Creado en Roblox]: ${pin}`);
+    res.json({ success: true, message: "PIN registrado con éxito" });
+});
 
-@app.get("/generate_pin/{user_id}")
-def generate_pin(user_id: int):
-    # Borrar PINs viejos del mismo usuario si vuelve a unirse o pedir PIN
-    for old_pin, uid in list(pins.items()):
-        if uid == user_id:
-            del pins[old_pin]
+// 2. LA WEB intenta vincular con el PIN ingresado por el usuario
+app.post('/api/link-pin', (req, res) => {
+    const { pin } = req.body;
+    
+    if (activePins[pin]) {
+        activePins[pin].linked = true;
+        console.log(`[PIN Vinculado desde Web]: ${pin}`);
+        return res.json({ success: true, message: "Cámara vinculada correctamente" });
+    } else {
+        console.log(`[Rechazado - PIN no encontrado]: ${pin}`);
+        return res.status(400).json({ success: false, message: "PIN incorrecto o inexistente" });
+    }
+});
 
-    pin = str(random.randint(1000, 9999))
-    pins[pin] = user_id
-    user_states[user_id] = False
-    return {"pin": pin}
+// 3. LA WEB actualiza el estado emocional (Tranquilo, Concentrado, ¡PÁNICO!)
+app.post('/api/update-state', (req, res) => {
+    const { pin, state } = req.body;
+    if (activePins[pin]) {
+        activePins[pin].state = state;
+        return res.json({ success: true });
+    }
+    res.status(400).json({ success: false });
+});
 
-# Acepta tanto /validate_pin como /verify_pin por si acaso
-@app.get("/validate_pin/{pin}")
-@app.get("/verify_pin/{pin}")
-def validate_pin(pin: str):
-    pin_str = str(pin).strip()
-    if pin_str in pins:
-        return {"valid": True, "user_id": pins[pin_str]}
-    return {"valid": False}
+// 4. ROBLOX consulta en bucle si su PIN ya fue vinculado y lee el estado
+app.get('/api/check-status/:pin', (req, res) => {
+    const pin = req.params.pin;
+    if (activePins[pin]) {
+        res.json({ 
+            exists: true, 
+            linked: activePins[pin].linked, 
+            state: activePins[pin].state 
+        });
+    } else {
+        res.json({ 
+            exists: false, 
+            linked: false, 
+            state: "Ninguno" 
+        });
+    }
+});
 
-@app.post("/update_status")
-def update_status(data: StatusData):
-    pin_str = str(data.pin).strip()
-    if pin_str in pins:
-        user_id = pins[pin_str]
-        user_states[user_id] = data.is_scared
-        return {"success": True}
-    return {"success": False, "error": "PIN no encontrado"}
-
-@app.get("/get_status/{user_id}")
-def get_status(user_id: int):
-    is_scared = user_states.get(user_id, False)
-    return {"is_scared": is_scared}
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Servidor escuchando en puerto ${PORT}`));
