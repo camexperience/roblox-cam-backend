@@ -5,7 +5,7 @@ import os
 
 app = FastAPI(title="PanicCam Backend")
 
-# Permitir conexiones de la Web y Roblox
+# Habilitar CORS completo para conectar Web, Localhost y Roblox sin bloqueos
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,7 +14,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Almacenamiento temporal en memoria
+# Diccionario temporal en memoria para los PINs
 active_pins = {}
 
 class PinModel(BaseModel):
@@ -26,40 +26,41 @@ class StateModel(BaseModel):
 
 @app.get("/")
 def home():
-    return {"status": "ok", "message": "Backend PanicCam con FastAPI activo 🚀"}
+    return {"status": "ok", "message": "Backend PanicCam activo"}
 
-# 1. ROBLOX registra un PIN recién generado
+# 1. ROBLOX: Registra el PIN del jugador
 @app.post("/api/create-pin")
 def create_pin(data: PinModel):
-    pin = str(data.pin)
+    pin = str(data.pin).strip()
     active_pins[pin] = {"linked": False, "state": "Tranquilo"}
-    print(f"[PIN Creado]: {pin}")
-    return {"success": True, "message": "PIN registrado correctamente"}
+    print(f"✅ PIN creado desde Roblox: {pin}")
+    return {"success": True, "message": "PIN registrado"}
 
-# 2. WEB vincula la cámara ingresando el PIN
+# 2. WEB: Vincula el PIN puesto por el usuario
 @app.post("/api/link-pin")
 def link_pin(data: PinModel):
-    pin = str(data.pin)
+    pin = str(data.pin).strip()
     if pin in active_pins:
         active_pins[pin]["linked"] = True
-        print(f"[PIN Vinculado]: {pin}")
+        print(f"🔗 PIN vinculado en Web: {pin}")
         return {"success": True, "message": "Cámara vinculada"}
-    else:
-        raise HTTPException(status_code=400, detail="PIN no encontrado")
+    
+    print(f"❌ Error vinculación: PIN {pin} no existe. PINs activos: {list(active_pins.keys())}")
+    raise HTTPException(status_code=400, detail="El PIN no existe. Entrá primero a Roblox.")
 
-# 3. WEB actualiza el estado emocional
+# 3. WEB: Actualiza el estado de la cámara
 @app.post("/api/update-state")
 def update_state(data: StateModel):
-    pin = str(data.pin)
+    pin = str(data.pin).strip()
     if pin in active_pins:
         active_pins[pin]["state"] = data.state
         return {"success": True}
     raise HTTPException(status_code=400, detail="PIN no encontrado")
 
-# 4. ROBLOX consulta el estado actual de la cámara
+# 4. ROBLOX: Lee el estado de la cámara
 @app.get("/api/check-status/{pin}")
 def check_status(pin: str):
-    pin_str = str(pin)
+    pin_str = str(pin).strip()
     if pin_str in active_pins:
         return {
             "exists": True,
@@ -69,7 +70,7 @@ def check_status(pin: str):
     return {
         "exists": False,
         "linked": False,
-        "state": "Ninguno"
+        "state": "Desconectado"
     }
 
 if __name__ == "__main__":
